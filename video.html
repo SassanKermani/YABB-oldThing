@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>MediaCapture and Streams API</title>
+	<meta name="viewport" content="width=device-width">
+</head>
+<body>
+	<header>
+		<h1>MediaCapture, MediaRecorder and Streams API</h1>
+	</header>
+	<main>
+		<p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. Impedit molestiae itaque facere totam saepe tempore esse temporibus, quae reprehenderit aliquid iusto ea laborum, iure eligendi odio exercitationem sapiente illum quos.</p>
+		
+		<p><button class="videoElement" id="btnStart">START RECORDING</button><br/>
+		<button id="btnStop">STOP RECORDING</button></p>
+		
+		<video controls></video>
+		<!-- <video controls style="transform: rotateY(180deg);-webkit-transform:rotateY(180deg); /* Safari and Chrome */-moz-transform:rotateY(180deg); /* Firefox */"></video> -->
+		
+		<video id="vid2" controls></video>
+		
+		<video id="vid3" controls></video>
+
+		<!-- could save to canvas and do image manipulation and saving too -->
+	</main>    
+	<script>
+		
+		let tempVarI = false;
+
+		let constraintObj = { 
+			audio: true, 
+			video: { 
+				facingMode: "user", 
+				width: { min: 640, ideal: 1280, max: 1920 },
+				height: { min: 480, ideal: 720, max: 1080 } 
+			} 
+		}; 
+		// width: 1280, height: 720  -- preference only
+		// facingMode: {exact: "user"}
+		// facingMode: "environment"
+		
+		//handle older browsers that might implement getUserMedia in some way
+		if (navigator.mediaDevices === undefined) {
+			navigator.mediaDevices = {};
+			navigator.mediaDevices.getUserMedia = function(constraintObj) {
+				let getUserMedia = navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
+				if (!getUserMedia) {
+					return Promise.reject(new Error('getUserMedia is not implemented in this browser'));
+				}
+				return new Promise(function(resolve, reject) {
+					getUserMedia.call(navigator, constraintObj, resolve, reject);
+				});
+			}
+		}else{
+			navigator.mediaDevices.enumerateDevices()
+			.then(devices => {
+				devices.forEach(device=>{
+					console.log(device.kind.toUpperCase(), device.label);
+					//, device.deviceId
+				})
+			})
+			.catch(err=>{
+				console.log(err.name, err.message);
+			})
+		}
+		navigator.mediaDevices.getUserMedia(constraintObj)
+		.then(function(mediaStreamObj) {
+			//connect the media stream to the first video element
+			let video = document.querySelector('video');
+			if ("srcObject" in video) {
+				video.srcObject = mediaStreamObj;
+			} else {
+				//old version
+				video.src = window.URL.createObjectURL(mediaStreamObj);
+			}
+			
+			video.onloadedmetadata = function(ev) {
+				//show in the video element what is being captured by the webcam
+				video.play();
+			};
+			
+			//add listeners for saving video/audio
+			let start = document.getElementById('btnStart');
+			let stop = document.getElementById('btnStop');
+			let vidSave = document.getElementById('vid2');
+			let mediaRecorder = new MediaRecorder(mediaStreamObj);
+			let chunks = [];
+			
+			start.addEventListener('click', (ev)=>{
+				mediaRecorder.start();
+				console.log(mediaRecorder.state);
+			})
+			stop.addEventListener('click', (ev)=>{
+				mediaRecorder.stop();
+				console.log(mediaRecorder.state);
+			});
+			mediaRecorder.ondataavailable = function(ev) {
+				chunks.push(ev.data);
+			}
+			mediaRecorder.onstop = (ev)=>{
+				let blob = new Blob(chunks, { 'type' : 'video/mp4;' });
+
+				/*=============================
+				=            Stuff            =
+				=============================*/
+
+				var reader = new FileReader();
+				reader.readAsArrayBuffer(blob);
+				reader.onloadend = (event) => {
+					// The contents of the BLOB are in reader.result:
+					
+					console.log(`reader.result`);
+					console.log(reader.result);
+					console.log(JSON.stringify(reader.result));
+
+
+					let thing = new Blob([new Uint8Array(reader.result)], { 'type' : 'video/mp4;' });
+
+					console.log(`thing`);
+					console.log(thing);
+
+					var oReq = new XMLHttpRequest();
+					oReq.open("POST", "/", true);
+					oReq.responseType = "arraybuffer";
+
+					oReq.onload = function (oEvent) {
+						var arrayBuffer = oReq.response; // Note: not oReq.responseText
+						if (arrayBuffer) {
+							var byteArray = new Uint8Array(arrayBuffer);
+							for (var i = 0; i < byteArray.byteLength; i++) {
+								// do something with each byte in the array
+							}
+
+							console.log(`arrayBuffer`);
+							console.log(arrayBuffer);
+
+							let newThing = new Blob([new Uint8Array(arrayBuffer)], { 'type' : 'video/mp4;' });
+
+							console.log(`newThing`);
+							console.log(newThing);
+
+							let videoURL = window.URL.createObjectURL(newThing);
+							vidSave.src = videoURL;
+						}
+					};
+
+					oReq.send(thing);
+
+				}
+				
+				/*=====  End of Stuff  ======*/
+				
+				chunks = [];
+
+			}	
+		})
+		.catch(function(err) { 
+			console.log(err.name, err.message); 
+		});
+		
+		/*********************************
+		getUserMedia returns a Promise
+		resolve - returns a MediaStream Object
+		reject returns one of the following errors
+		AbortError - generic unknown cause
+		NotAllowedError (SecurityError) - user rejected permissions
+		NotFoundError - missing media track
+		NotReadableError - user permissions given but hardware/OS error
+		OverconstrainedError - constraint video settings preventing
+		TypeError - audio: false, video: false
+		*********************************/
+	</script>
+</body>
+</html>
